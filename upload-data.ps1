@@ -11,12 +11,23 @@ param(
     [string]$Repo = "",
     [switch]$Pack,
     [switch]$DryRun,
-    [int]$Retries = 10
+    [int]$Retries = 10,
+    [int]$RetryWait = 30
 )
 $ErrorActionPreference = "Stop"
+
+# Windows PowerShell turns anything a native tool writes to stderr into a terminating error while
+# ErrorActionPreference is "Stop"; run gh with "Continue" and judge it by its exit code instead.
+function Invoke-Gh {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { $out = & gh @args 2>&1; return @{ Code = $LASTEXITCODE; Out = $out } }
+    finally { $ErrorActionPreference = $old }
+}
+
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $parts = Join-Path $root "release_parts"
-if (-not $Repo) { $Repo = (gh repo view --json nameWithOwner --jq .nameWithOwner) }
+if (-not $Repo) { $Repo = ((Invoke-Gh repo view --json nameWithOwner --jq .nameWithOwner).Out | Select-Object -Last 1) }
 
 if ($Pack) {
     Push-Location (Join-Path $root "backend")
@@ -33,21 +44,20 @@ $files = @(Get-ChildItem $parts -File | Where-Object { $_.Name -match '^(store\.
            Sort-Object @{ Expression = { -not $_.Name.StartsWith("store") } }, Name)  # store first: the server needs it
 if (-not $files) { throw "No parts in $parts. Run with -Pack first." }
 
-gh release view $Tag --repo $Repo *> $null
-if ($LASTEXITCODE -ne 0) {
+if ((Invoke-Gh release view $Tag --repo $Repo).Code -ne 0) {
     if ($DryRun) { Write-Host "release $Tag does not exist yet (would be created)" }
     else {
-        gh release create $Tag --repo $Repo --target main --title "Data $Tag" `
+        $c = Invoke-Gh release create $Tag --repo $Repo --target main --title "Data $Tag" `
             --notes "Built store (store.tar.part*) and source CSVs (raw.tar.gz.part*), split into parts. The server downloads the store when DATA_RELEASE=$Tag."
-        if ($LASTEXITCODE -ne 0) { throw "could not create release $Tag" }
+        if ($c.Code -ne 0) { throw "could not create release ${Tag}: $($c.Out)" }
     }
 }
 
 function Get-Uploaded {
-    $json = gh release view $Tag --repo $Repo --json assets 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $json) { return @{} }
+    $r = Invoke-Gh release view $Tag --repo $Repo --json assets
+    if ($r.Code -ne 0 -or -not $r.Out) { return @{} }
     $map = @{}
-    foreach ($a in ($json | ConvertFrom-Json).assets) { if ($a.state -eq "uploaded") { $map[$a.name] = [long]$a.size } }
+    foreach ($a in (($r.Out | Out-String) | ConvertFrom-Json).assets) { if ($a.state -eq "uploaded") { $map[$a.name] = [long]$a.size } }
     return $map
 }
 
@@ -59,13 +69,14 @@ if ($DryRun) { $todo | ForEach-Object { Write-Host "  would upload $($_.Name)" }
 foreach ($f in $todo) {
     for ($attempt = 1; $attempt -le $Retries; $attempt++) {
         $t = Get-Date
-        gh release upload $Tag $f.FullName --repo $Repo --clobber 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        $u = Invoke-Gh release upload $Tag $f.FullName --repo $Repo --clobber
+        if ($u.Code -eq 0) {
             Write-Host ("OK    {0}  ({1:N0}s, attempt {2})" -f $f.Name, ((Get-Date) - $t).TotalSeconds, $attempt)
             break
         }
-        Write-Host ("FAIL  {0}  attempt {1} of {2}; retrying in 30s" -f $f.Name, $attempt, $Retries)
-        Start-Sleep -Seconds 30
+        $why = ($u.Out | Select-Object -Last 1)
+        Write-Host ("FAIL  {0}  attempt {1} of {2}: {3}; retrying in {4}s" -f $f.Name, $attempt, $Retries, $why, $RetryWait)
+        if ($attempt -lt $Retries) { Start-Sleep -Seconds $RetryWait }
     }
 }
 
