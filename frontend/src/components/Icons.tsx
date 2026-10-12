@@ -79,6 +79,12 @@ export const Mark = () => (
   </svg>
 );
 
+export const LogoutIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M8 3.5H5a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 5 16.5h3M12.5 13.5 16 10l-3.5-3.5M16 10H8" />
+  </Svg>
+);
+
 export const ClockIcon = (p: P) => (
   <Svg {...p}>
     <circle cx="10" cy="10" r="7" />

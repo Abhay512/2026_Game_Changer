@@ -41,6 +41,7 @@ class Settings:
     port: int
     workers: int  # server processes; each has its own caches (memory × workers)
     app_password: str
+    login_idle_minutes: int  # with APP_PASSWORD: a login ends after this long without requests
     ingest_workers: int
     cache_symbols: int  # per-symbol matrices kept in memory (~5 MB each)
     cache_expiries: int  # per-expiry option matrices kept in memory (~10 MB each)
@@ -65,6 +66,7 @@ def load_settings() -> Settings:
         port=_int("PORT", 8000),
         workers=max(1, _int("WORKERS", 1)),
         app_password=os.environ.get("APP_PASSWORD", ""),
+        login_idle_minutes=max(1, _int("LOGIN_IDLE_MINUTES", 30)),
         ingest_workers=workers,
         cache_symbols=_int("CACHE_SYMBOLS", 48),
         cache_expiries=_int("CACHE_EXPIRIES", 16),

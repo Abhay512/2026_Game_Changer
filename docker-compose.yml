@@ -2,7 +2,7 @@
 #   docker compose build
 #   docker compose run --rm ingest        # build / refresh the Parquet store from the raw CSVs
 #   docker compose up -d analyser         # serve on http://<host>:${PORT:-8000}
-# Set APP_PASSWORD in .env to require a login (any username, that password).
+# Set APP_PASSWORD in .env to require a login (a login page asks for that password).
 services:
   analyser:
     build: .
@@ -12,6 +12,7 @@ services:
       - "${PORT:-8000}:8000"
     environment:
       APP_PASSWORD: "${APP_PASSWORD:-}"
+      LOGIN_IDLE_MINUTES: "${LOGIN_IDLE_MINUTES:-30}"
       # optional: download the store from a GitHub release instead of running ingest
       DATA_RELEASE: "${DATA_RELEASE:-}"
       GITHUB_REPO: "${GITHUB_REPO:-}"

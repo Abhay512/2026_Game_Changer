@@ -19,6 +19,12 @@ function remember(url: string, data: unknown) {
 export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   if (cache.has(url)) return cache.get(url) as T;
   const res = await fetch(url, { signal, headers: { Accept: "application/json" } });
+  if (res.status === 401) {
+    // the login ended (idle too long, or logged out in another tab): reloading shows the login page,
+    // and after logging in the same URL brings this view back
+    window.location.reload();
+    throw new ApiError(401, "Login required");
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {

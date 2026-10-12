@@ -255,3 +255,9 @@ export interface StrikeSeries {
   theta: (number | null)[];
   vega: (number | null)[];
 }
+
+/** /api/session: whether this server asks for a password. */
+export interface SessionInfo {
+  auth: boolean;
+  idle_minutes: number | null;
+}

@@ -296,14 +296,125 @@ def test_latency_warm(client):
     assert computed < 0.3 and cached < 0.05
 
 
-def test_basic_auth(market_store):
-    secured = TestClient(create_app(market_store, cfg=replace(settings, app_password="s3cret")))
-    assert secured.get("/api/health").status_code == 200  # health check stays open for Docker
-    assert secured.get("/api/symbols").status_code == 401
-    good = base64.b64encode(b"analyst:s3cret").decode()
-    bad = base64.b64encode(b"analyst:nope").decode()
-    assert secured.get("/api/symbols", headers={"Authorization": f"Basic {bad}"}).status_code == 401
-    assert secured.get("/api/symbols", headers={"Authorization": f"Basic {good}"}).status_code == 200
+@pytest.fixture()
+def dist(tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>Analyser</title><div id=root></div>")
+    (tmp_path / "assets" / "app.js").write_text("console.log('app')")
+    return tmp_path
+
+
+def secured_client(market_store, dist, clock=None, base_url="http://testserver"):
+    app = create_app(market_store, cfg=replace(settings, app_password="s3cret", login_idle_minutes=30), dist=dist)
+    if clock:  # swap the gate's clock (the middleware is the gate's bound method)
+        gate = next(m.kwargs["dispatch"].__self__ for m in app.user_middleware if "dispatch" in m.kwargs)
+        gate.clock = clock
+    return TestClient(app, base_url=base_url)
+
+
+def login(client, password="s3cret", ip="1.2.3.4"):
+    return client.post("/api/login", data={"password": password}, headers={"X-Real-IP": ip})
+
+
+def test_login_gate_hides_everything_but_health_and_login_page(market_store, dist):
+    c = secured_client(market_store, dist)
+    assert c.get("/api/health").status_code == 200  # health check stays open for Docker / Railway
+    assert c.get("/api/symbols").status_code == 401
+    assert c.get("/api/session").status_code == 401
+    assert c.get("/assets/app.js").status_code == 401  # the app itself is behind the login too
+    page = c.get("/?s=MKT")
+    assert page.status_code == 401 and 'type="password"' in page.text and "console.log" not in page.text
+    assert page.headers["cache-control"] == "no-store" and len(page.content) < 8000
+    assert "www-authenticate" not in page.headers  # no browser password box, which would remember it
+    assert c.get("/api/symbols", headers={"Authorization": "Basic " + base64.b64encode(b"x:s3cret").decode()}).status_code == 401
+
+
+def test_login_sets_a_browser_session_cookie(market_store, dist):
+    c = secured_client(market_store, dist)
+    r = login(c, "nope")
+    assert r.status_code == 401 and "sa_session" not in r.cookies
+    r = login(c)
+    assert r.status_code == 200
+    cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie and "path=/" in cookie
+    assert "max-age" not in cookie and "expires" not in cookie  # dropped when the browser closes
+    assert "s3cret" not in cookie
+    assert c.get("/api/symbols").status_code == 200
+    assert c.get("/api/session").json() == {"auth": True, "idle_minutes": 30}
+    page = c.get("/?s=MKT")
+    assert page.status_code == 200 and "Analyser" in page.text and page.headers["cache-control"] == "no-store"
+    assert c.get("/assets/app.js").status_code == 200
+
+
+def test_cookie_is_secure_behind_https_proxy(market_store, dist):
+    c = secured_client(market_store, dist)
+    r = c.post("/api/login", data={"password": "s3cret"}, headers={"X-Forwarded-Proto": "https"})
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
+def test_session_ends_after_idle_time_and_slides_with_use(market_store, dist):
+    now = [1_000_000.0]
+    c = secured_client(market_store, dist, clock=lambda: now[0])
+    assert login(c).status_code == 200
+    now[0] += 29 * 60
+    r = c.get("/api/symbols")  # used within 30 min: still in, and the cookie is renewed
+    assert r.status_code == 200 and "sa_session" in r.headers.get("set-cookie", "")
+    now[0] += 29 * 60
+    assert c.get("/api/symbols").status_code == 200  # 58 min after login, but only 29 idle
+    now[0] += 31 * 60
+    assert c.get("/api/symbols").status_code == 401  # idle too long
+    assert c.get("/").status_code == 401
+
+
+def test_session_has_a_hard_limit(market_store, dist):
+    now = [1_000_000.0]
+    c = secured_client(market_store, dist, clock=lambda: now[0])
+    assert login(c).status_code == 200
+    for _ in range(12 * 3):  # busy for 12 hours, never idle
+        now[0] += 20 * 60
+        status = c.get("/api/symbols").status_code
+    assert status == 401
+
+
+def test_tampered_or_foreign_cookie_is_refused(market_store, dist):
+    c = secured_client(market_store, dist)
+    login(c)
+    good = c.cookies["sa_session"]
+    login_at, exp, sig = good.split(".")
+    c.cookies.set("sa_session", f"{login_at}.{int(exp) + 99999}.{sig}")
+    assert c.get("/api/symbols").status_code == 401
+    other = create_app(market_store, cfg=replace(settings, app_password="different"), dist=dist)
+    oc = TestClient(other)
+    oc.cookies.set("sa_session", good)  # signed with another password
+    assert oc.get("/api/symbols").status_code == 401
+
+
+def test_wrong_passwords_are_rate_limited_per_client(market_store, dist):
+    now = [1_000_000.0]
+    c = secured_client(market_store, dist, clock=lambda: now[0])
+    details = [login(c, "nope", ip="9.9.9.9").json()["detail"] for _ in range(5)]
+    assert details[0] == "Wrong password." and details[3] == "Wrong password. 1 try left." and details[4] == "Wrong password."
+    r = login(c, ip="9.9.9.9")  # even the right password waits now
+    assert r.status_code == 429 and "Try again in" in r.json()["detail"] and int(r.headers["retry-after"]) > 0
+    assert login(c, ip="5.5.5.5").status_code == 200  # other visitors are not affected
+    now[0] += 601
+    assert login(c, ip="9.9.9.9").status_code == 200
+
+
+def test_logout_clears_the_session(market_store, dist):
+    c = secured_client(market_store, dist)
+    login(c)
+    assert c.get("/api/symbols").status_code == 200
+    r = c.post("/api/logout")
+    assert r.status_code == 204 and "sa_session" in r.headers["set-cookie"]
+    assert c.get("/api/symbols").status_code == 401
+
+
+def test_no_password_means_no_gate(market_store, dist):
+    c = TestClient(create_app(market_store, cfg=replace(settings, app_password=""), dist=dist))
+    assert c.get("/api/symbols").status_code == 200
+    assert c.get("/api/session").json() == {"auth": False, "idle_minutes": None}
+    assert c.post("/api/login", data={"password": "x"}).status_code in (404, 405)
 
 
 def test_store_reloads_after_ingest(market_store):

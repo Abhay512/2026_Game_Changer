@@ -1,16 +1,14 @@
 """FastAPI app: JSON API under /api, and the built frontend (frontend/dist) at / when present."""
 from __future__ import annotations
 
-import base64
-import binascii
-import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .auth import LoginGate
 from .config import PROJECT_ROOT, Settings, settings
 from .routes import analysis, series, symbols
 from .store import NotFound, Store, StoreMissing
@@ -24,22 +22,15 @@ def create_app(store_dir: Path | None = None, cfg: Settings = settings, dist: Pa
     app.state.store = Store(store_dir or cfg.store_dir, cfg.cache_symbols, cfg.cache_expiries, cfg.cache_responses)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-    if cfg.app_password:
-        password = cfg.app_password
+    gate = LoginGate(cfg.app_password, cfg.login_idle_minutes) if cfg.app_password else None
+    if gate:  # everything except the health check and the login page needs a login
+        app.middleware("http")(gate.middleware)
+        app.add_api_route("/api/login", gate.login, methods=["POST"], include_in_schema=False)
+        app.add_api_route("/api/logout", gate.logout, methods=["POST"], include_in_schema=False)
 
-        @app.middleware("http")
-        async def basic_auth(request: Request, call_next):
-            if request.url.path == "/api/health":
-                return await call_next(request)
-            header = request.headers.get("authorization", "")
-            if header.startswith("Basic "):
-                try:
-                    _, _, given = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-                except (binascii.Error, UnicodeDecodeError):
-                    given = ""
-                if secrets.compare_digest(given.encode(), password.encode()):
-                    return await call_next(request)
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Stock Analyser"'})
+    @app.get("/api/session", include_in_schema=False)
+    async def session():
+        return {"auth": gate is not None, "idle_minutes": cfg.login_idle_minutes if gate else None}
 
     @app.exception_handler(StoreMissing)
     async def _missing(_: Request, exc: StoreMissing):
@@ -67,7 +58,8 @@ def create_app(store_dir: Path | None = None, cfg: Settings = settings, dist: Pa
             target = (dist / path).resolve()
             if path and target.is_file() and dist.resolve() in target.parents:
                 return FileResponse(target)
-            return FileResponse(dist / "index.html")
+            # never cached, so Back after logging out cannot show the app again
+            return FileResponse(dist / "index.html", headers={"Cache-Control": "no-store"})
 
     return app
 

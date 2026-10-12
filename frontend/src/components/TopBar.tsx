@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
-import type { DayInfo, SymbolInfo } from "../api/types";
+import { useApi } from "../api/client";
+import type { DayInfo, SessionInfo, SymbolInfo } from "../api/types";
 import { METRIC_INFO } from "../content/metricInfo";
 import { useDismiss } from "../lib/hooks";
 import { useHints } from "../state/hints";
 import { useView } from "../state/view";
 import { useTheme } from "../theme/theme";
 import { DatePicker } from "./DatePicker";
-import { Mark, MoonIcon, SlidersIcon, SunIcon } from "./Icons";
+import { LogoutIcon, Mark, MoonIcon, SlidersIcon, SunIcon } from "./Icons";
 import { SymbolSearch } from "./SymbolSearch";
 
 export function TopBar({ symbols, days }: { symbols: SymbolInfo[]; days: DayInfo[] }) {
@@ -28,9 +29,26 @@ export function TopBar({ symbols, days }: { symbols: SymbolInfo[]; days: DayInfo
           <button className="icon-btn" onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} aria-label="Toggle colour theme">
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
+          <Logout />
         </div>
       </div>
     </header>
+  );
+}
+
+/** Shown only when the server asks for a password (APP_PASSWORD). */
+function Logout() {
+  const session = useApi<SessionInfo>("/api/session").data;
+  const [busy, setBusy] = useState(false);
+  if (!session?.auth) return null;
+  const logout = () => {
+    setBusy(true);
+    fetch("/api/logout", { method: "POST" }).finally(() => window.location.reload());
+  };
+  return (
+    <button className="icon-btn" onClick={logout} disabled={busy} title="Log out" aria-label="Log out">
+      <LogoutIcon />
+    </button>
   );
 }
 
