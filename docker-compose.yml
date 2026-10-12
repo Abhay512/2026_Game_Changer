@@ -12,6 +12,10 @@ services:
       - "${PORT:-8000}:8000"
     environment:
       APP_PASSWORD: "${APP_PASSWORD:-}"
+      # optional: download the store from a GitHub release instead of running ingest
+      DATA_RELEASE: "${DATA_RELEASE:-}"
+      GITHUB_REPO: "${GITHUB_REPO:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       WORKERS: "${WORKERS:-2}"
       CACHE_SYMBOLS: "${CACHE_SYMBOLS:-24}"
       CACHE_EXPIRIES: "${CACHE_EXPIRIES:-12}"

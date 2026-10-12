@@ -18,3 +18,4 @@ frontend/dist/
 
 # docs are kept locally only
 *.md
+release_*/
