@@ -1,0 +1,20 @@
+# data (never commit) — mount or copy onto the server separately
+h2_2025/
+store/
+store_*/
+raw_*/
+
+# build output / dependencies
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+*.pyc
+**/.pytest_cache/
+*.tsbuildinfo
+
+# local secrets and logs
+.env
+*.log
+
+# docs are kept locally only
+*.md

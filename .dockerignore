@@ -1,0 +1,11 @@
+# never send data or build output into the image context
+store/
+store_*/
+h2_2025/
+raw_*/
+**/node_modules/
+frontend/dist/
+**/__pycache__/
+**/.pytest_cache/
+.env
+*.log
