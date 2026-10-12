@@ -1,0 +1,107 @@
+/* Design tokens. Every color in the app (CSS and charts) comes from here.
+   Chart series colors were checked for colour-blind separation (CVD delta-E) in both themes:
+   up/down/VWAP pass all-pairs CVD in both modes; blue (today/OI) never shares a plot with VWAP. */
+
+:root {
+  color-scheme: light;
+  --page: #f4f3ef;
+  --surface: #fcfcfb;
+  --surface-2: #f3f2ee; /* inset / hover */
+  --surface-3: #e9e8e3; /* pressed / selected chip */
+  --ink-1: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #807e78;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.2);
+
+  --accent: #2a78d6; /* today / selection / focus */
+  --accent-ink: #1c5cab; /* accent used as text (4.5:1) */
+  --accent-wash: rgba(42, 120, 214, 0.1);
+  --accent-wash-strong: rgba(42, 120, 214, 0.18);
+
+  --up: #0a8f84;
+  --down: #dc4b2c;
+  --up-ink: #07766d; /* direction as text: >= 4.5:1 on surface */
+  --down-ink: #b83a1f;
+  --up-wash: rgba(10, 143, 132, 0.45);
+  --down-wash: rgba(220, 75, 44, 0.45);
+  --vwap: #6250d6;
+  --ce: var(--down); /* calls: vermilion (Indian convention: call writers = resistance) */
+  --pe: var(--up); /* puts: teal (put writers = support) */
+  --ce-wash: rgba(220, 75, 44, 0.16);
+  --pe-wash: rgba(10, 143, 132, 0.16);
+  --base: #8f8d86; /* 20-day baseline series (de-emphasis gray) */
+  --base-bar: #cfcdc5; /* bars outside the selected window */
+
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.1);
+  --radius: 6px;
+  --radius-sm: 4px;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0f0f0e;
+    --surface: #1a1a19;
+    --surface-2: #222220;
+    --surface-3: #2c2c2a;
+    --ink-1: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-3: #8f8d86;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.2);
+    --accent: #3987e5;
+    --accent-ink: #86b6ef;
+    --accent-wash: rgba(57, 135, 229, 0.14);
+    --accent-wash-strong: rgba(57, 135, 229, 0.24);
+    --up: #22a090;
+    --down: #ea6440;
+    --up-ink: #3cc0ad;
+    --down-ink: #f08a6c;
+    --up-wash: rgba(34, 160, 144, 0.45);
+    --down-wash: rgba(234, 100, 64, 0.45);
+    --vwap: #9085e9;
+    --ce-wash: rgba(234, 100, 64, 0.2);
+    --pe-wash: rgba(34, 160, 144, 0.2);
+    --base: #8f8d86;
+    --base-bar: #3a3a37;
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f0f0e;
+  --surface: #1a1a19;
+  --surface-2: #222220;
+  --surface-3: #2c2c2a;
+  --ink-1: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-3: #8f8d86;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --accent: #3987e5;
+  --accent-ink: #86b6ef;
+  --accent-wash: rgba(57, 135, 229, 0.14);
+  --accent-wash-strong: rgba(57, 135, 229, 0.24);
+  --up: #22a090;
+  --down: #ea6440;
+  --up-ink: #3cc0ad;
+  --down-ink: #f08a6c;
+  --up-wash: rgba(34, 160, 144, 0.45);
+  --down-wash: rgba(234, 100, 64, 0.45);
+  --vwap: #9085e9;
+  --ce-wash: rgba(234, 100, 64, 0.2);
+  --pe-wash: rgba(34, 160, 144, 0.2);
+  --base: #8f8d86;
+  --base-bar: #3a3a37;
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
