@@ -150,7 +150,7 @@ class Store:
         try:
             v = (self.root / "manifest.json").stat().st_mtime_ns
         except FileNotFoundError:
-            raise StoreMissing(f"No data store at {self.root}. Run `python -m ingest` first.") from None
+            raise StoreMissing(f"No data store at {self.root} yet. Build it with `python -m ingest`, or set DATA_RELEASE to download it.") from None
         if v != self._version:
             with self._lock:
                 if v != self._version:

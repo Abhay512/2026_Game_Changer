@@ -23,6 +23,7 @@ import shutil
 import sys
 import tarfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -180,7 +181,16 @@ def fetch(store: Path, tag: str | None, repo: str | None, token: str | None) -> 
     if marker.exists() and marker.read_text().strip() == tag and (store / "manifest.json").exists():
         print(f"fetch: store already at release {tag}")
         return False
-    assets = sorted((a for a in release_assets(repo, tag, token) if a["name"].startswith("store.tar.part")), key=lambda a: a["name"])
+    try:
+        listed = release_assets(repo, tag, token)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise SystemExit(f"fetch: GitHub refused the token (HTTP {e.code}); check GITHUB_TOKEN") from None
+        if e.code == 404:  # GitHub answers 404 for private repos the token cannot see
+            raise SystemExit(f"fetch: release {tag} not found in {repo}. Either it does not exist, or GITHUB_TOKEN "
+                             "has no access to this repo (it needs Contents: read on it)") from None
+        raise
+    assets = sorted((a for a in listed if a["name"].startswith("store.tar.part")), key=lambda a: a["name"])
     if not assets:
         raise SystemExit(f"fetch: release {tag} of {repo} has no store.tar.part* assets")
     total = sum(a["size"] for a in assets)

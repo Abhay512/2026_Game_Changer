@@ -32,4 +32,5 @@ WORKDIR /app/backend
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', '8000'), timeout=4)"
-CMD ["sh", "-c", "python -m tools.data_release fetch && exec python -m app"]
+# a failed download must not stop the server: it then serves the store it already has (or explains it has none)
+CMD ["sh", "-c", "python -m tools.data_release fetch || echo 'fetch: failed (see above), starting with the existing store'; exec python -m app"]
