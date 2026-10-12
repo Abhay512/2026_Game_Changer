@@ -1,0 +1,8 @@
+# runtime (what the server / ingest need)
+fastapi>=0.110
+uvicorn>=0.29
+pandas>=2.0,<3
+numpy>=1.26,<2.1
+pyarrow>=13
+scipy>=1.11
+python-dotenv>=1.0
