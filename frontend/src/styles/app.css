@@ -1534,6 +1534,18 @@ table.data .row-today td {
   line-height: 1.2;
 }
 
+.chain-table .cs.up {
+  color: var(--up-ink);
+}
+
+.chain-table .cs.down {
+  color: var(--down-ink);
+}
+
+.chain-table td.vol .cv {
+  color: var(--accent-ink);
+}
+
 .chain-table .cx,
 .cx.static {
   display: inline-block;
@@ -1546,7 +1558,7 @@ table.data .row-today td {
   position: relative;
 }
 
-/* OI magnitude: a 3px data bar under the number (never behind the digits) */
+/* OI and OI-change size: a 3px data bar under the number (never behind the digits); dashed = OI fell */
 .oi-cell .oi-bar {
   position: absolute;
   bottom: 3px;
@@ -1562,6 +1574,14 @@ table.data .row-today td {
 .oi-cell.pe .oi-bar {
   left: 10px;
   background: var(--pe);
+}
+
+.oi-cell.ce .oi-bar.fell {
+  background: repeating-linear-gradient(90deg, var(--ce) 0 4px, transparent 4px 6px);
+}
+
+.oi-cell.pe .oi-bar.fell {
+  background: repeating-linear-gradient(90deg, var(--pe) 0 4px, transparent 4px 6px);
 }
 
 .mp-tag {

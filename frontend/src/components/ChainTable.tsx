@@ -13,8 +13,9 @@ interface Col {
   label: string;
   fmt: (n: number | null) => string;
   x?: ComparedKey; // show "2.4×" when today is unusual for this strike's moneyness
-  bar?: boolean; // in-cell OI bar
-  sub?: keyof ChainCell & string; // small second line (change)
+  bar?: boolean; // in-cell bar: size against the largest on screen (dashed when negative, i.e. OI fell)
+  tone?: string; // extra cell class (volume reads in blue)
+  sub?: keyof ChainCell & string; // small second line (change), green when up and red when down
   subFmt?: (n: number | null) => string;
 }
 
@@ -22,9 +23,9 @@ const signed = (n: number | null) => compact(n, true);
 const COLS: Record<View, Col[]> = {
   oi: [
     { key: "oi", label: "OI", fmt: compact, bar: true },
-    { key: "oi_chg", label: "OI chg", fmt: signed, x: "oi_chg" },
+    { key: "oi_chg", label: "OI chg", fmt: signed, x: "oi_chg", bar: true },
     { key: "oi_5m", label: "Last 5m", fmt: signed, x: "oi_5m" },
-    { key: "vol", label: "Volume", fmt: compact, x: "vol" },
+    { key: "vol", label: "Volume", fmt: compact, x: "vol", tone: "vol" },
     { key: "iv", label: "IV", fmt: (n) => (isNum(n) ? n.toFixed(1) : "—") },
     { key: "ltp", label: "LTP", fmt: (n) => price(n), sub: "ltp_chg", subFmt: (n) => price(n, true) },
   ],
@@ -33,7 +34,7 @@ const COLS: Record<View, Col[]> = {
     { key: "theta", label: "Theta", fmt: (n) => num(n, 2), sub: "theta_chg", subFmt: (n) => num(n, 2, true) },
     { key: "gamma", label: "Gamma", fmt: (n) => num(n, 4), sub: "gamma_chg", subFmt: (n) => num(n, 4, true) },
     { key: "delta", label: "Delta", fmt: (n) => num(n, 2), sub: "delta_chg", subFmt: (n) => num(n, 2, true) },
-    { key: "iv", label: "IV", fmt: (n) => (isNum(n) ? n.toFixed(1) : "—"), sub: "iv_chg", subFmt: (n) => (isNum(n) ? (n > 0 ? "+" : "") + n.toFixed(1) : "—") },
+    { key: "iv", label: "IV", fmt: (n) => (isNum(n) ? n.toFixed(1) : "—"), sub: "iv_chg", subFmt: (n) => num(n, 1, true) },
     { key: "ltp", label: "LTP", fmt: (n) => price(n), sub: "ltp_chg", subFmt: (n) => price(n, true) },
   ],
 };
@@ -52,16 +53,23 @@ function flagged(rows: ChainRow[], cols: Col[]): Set<string> {
   return new Set(all.sort((p, q) => q.x - p.x).slice(0, MAX_FLAGS).map((f) => f.id));
 }
 
-function Cell({ c, col, side, maxOi, itm, flag }: { c: ChainCell | null; col: Col; side: "ce" | "pe"; maxOi: number; itm: boolean; flag: boolean }) {
+/** Direction of a formatted change, judged on what is shown: "+0.0000" stays neutral. */
+function tone(text: string): string {
+  if (!/[1-9]/.test(text)) return "";
+  return text.startsWith("+") ? "up" : /^[−-]/.test(text) ? "down" : "";
+}
+
+function Cell({ c, col, side, max, itm, flag }: { c: ChainCell | null; col: Col; side: "ce" | "pe"; max: number; itm: boolean; flag: boolean }) {
   if (!c) return <td className={`nil${itm ? " itm" : ""}`}>—</td>;
   const v = c[col.key] as number | null;
   const x = col.x ? c.x[col.x] : null;
-  const pct = col.bar && isNum(v) && maxOi > 0 ? Math.min(100, (v / maxOi) * 100) : 0;
+  const share = col.bar && isNum(v) && max > 0 ? Math.min(1, Math.abs(v) / max) : 0;
+  const sub = col.sub ? col.subFmt!(c[col.sub] as number | null) : null;
   return (
-    <td className={`${col.bar ? `oi-cell ${side}` : ""}${itm ? " itm" : ""}`}>
-      {col.bar && <span className="oi-bar" style={{ width: `${pct}%` }} />}
+    <td className={[col.bar && `oi-cell ${side}`, col.tone, itm && "itm"].filter(Boolean).join(" ")}>
+      {col.bar && <span className={`oi-bar${isNum(v) && v < 0 ? " fell" : ""}`} style={{ width: `calc((100% - 20px) * ${share})` }} />}
       <span className="cv">{col.fmt(v)}</span>
-      {col.sub && <span className="cs">{col.subFmt!(c[col.sub] as number | null)}</span>}
+      {sub !== null && <span className={`cs ${tone(sub)}`}>{sub}</span>}
       {flag && isNum(x) && <span className="cx" title={`${times(x)} the usual value at this distance from ATM, same window`}>{times(x)}</span>}
     </td>
   );
@@ -71,7 +79,13 @@ export function ChainTable({ chain }: { chain: Chain }) {
   const [view, setView] = useState<View>("oi");
   const [open, setOpen] = useState<number[]>([]); // strikes whose intraday chart is open (any number)
   const cols = COLS[view];
-  const maxOi = useMemo(() => Math.max(0, ...chain.rows.flatMap((r) => [r.ce?.oi ?? 0, r.pe?.oi ?? 0])), [chain]);
+  // each bar column is scaled to its own largest |value| on screen, calls and puts together
+  const barMax = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const col of cols.filter((c) => c.bar))
+      m[col.key] = Math.max(0, ...chain.rows.flatMap((r) => [r.ce, r.pe].map((s) => Math.abs((s?.[col.key] as number | null) ?? 0) || 0)));
+    return m;
+  }, [chain, cols]);
   const flags = useMemo(() => flagged(chain.rows, cols), [chain, cols]);
   const spot = chain.spot;
   // index after which the spot line sits
@@ -89,7 +103,7 @@ export function ChainTable({ chain }: { chain: Chain }) {
           </button>
         </div>
         <span className="muted chain-help">
-          Changes are since the window start · <span className="cx static">2.4×</span> = the {MAX_FLAGS} most unusual cells (≥ {UNUSUAL}× the same strike distance on the last {chain.baseline.n} sessions) · click a row for its intraday chart
+          Changes are since the window start{view === "oi" && " · bars show size (dashed = OI fell)"} · <span className="cx static">2.4×</span> = the {MAX_FLAGS} most unusual cells (≥ {UNUSUAL}× the same strike distance on the last {chain.baseline.n} sessions) · click a row for its intraday chart
         </span>
       </div>
       <div className="chain-scroll">
@@ -125,14 +139,14 @@ export function ChainTable({ chain }: { chain: Chain }) {
                     onClick={() => setOpen((o) => (o.includes(r.strike) ? o.filter((k) => k !== r.strike) : [...o, r.strike]))}
                   >
                     {cols.map((c) => (
-                      <Cell key={"ce" + c.key} c={r.ce} col={c} side="ce" maxOi={maxOi} itm={ceItm} flag={flags.has(`${r.strike}-ce-${c.key}`)} />
+                      <Cell key={"ce" + c.key} c={r.ce} col={c} side="ce" max={barMax[c.key] ?? 0} itm={ceItm} flag={flags.has(`${r.strike}-ce-${c.key}`)} />
                     ))}
                     <td className="strike">
                       {num(r.strike, r.strike % 1 ? 1 : 0)}
                       {r.strike === chain.max_pain && <span className="mp-tag" title="Max pain">MP</span>}
                     </td>
                     {[...cols].reverse().map((c) => (
-                      <Cell key={"pe" + c.key} c={r.pe} col={c} side="pe" maxOi={maxOi} itm={peItm} flag={flags.has(`${r.strike}-pe-${c.key}`)} />
+                      <Cell key={"pe" + c.key} c={r.pe} col={c} side="pe" max={barMax[c.key] ?? 0} itm={peItm} flag={flags.has(`${r.strike}-pe-${c.key}`)} />
                     ))}
                   </tr>
                   {open.includes(r.strike) && (
