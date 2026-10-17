@@ -207,6 +207,44 @@ def test_chain_rows_and_offset_baseline(client, tables):
     assert pain["strikes"][int(np.argmin(pain["payout"]))] == pain["max_pain"] == j["max_pain"]
 
 
+def test_chain_days_match_the_chain_and_the_raw_data(client, tables):
+    day = "2025-07-10"
+    ch, opt = tables["chain"], tables["opt"]
+    chain = get(client, "/api/chain/MKT", date=day, strikes=2, **W)
+    shared = ("oi_chg", "vol", "iv", "vega", "theta", "gamma", "delta")
+    for row in chain["rows"]:
+        j = get(client, "/api/chain/MKT/days", date=day, offset=row["offset"], **W)
+        assert j["available"] and j["strike"] == row["strike"] and j["offset"] == row["offset"]
+        assert j["baseline"]["days"] == chain["baseline"]["days"] and len(j["strikes"]) == j["baseline"]["n"]
+        for side in ("ce", "pe"):
+            cell, days = row[side], j[side]
+            for key in shared:  # the bar graph agrees with the chain's own value, average and ×
+                assert days[key]["value"] == cell[key]
+                assert days[key]["avg"] == pytest.approx(cell["avg"][key], rel=1e-6, abs=1e-6)
+                assert days[key]["x"] == cell["x"][key]
+                assert len(days[key]["hist"]) == j["baseline"]["n"]
+            assert days["oi"]["value"] == cell["oi"]
+            assert days["oi_chg"].get("abs") and not days["oi"].get("abs")  # OI chg compares size; OI compares level
+
+    # OI on each baseline session, recomputed from the store: that day's front expiry, its own ATM strike, bar B
+    j = get(client, "/api/chain/MKT/days", date=day, offset=0, **W)
+    for i, d in enumerate(j["baseline"]["days"]):
+        e = front(d)
+        k = ch[(ch.day == d) & (ch.expiry == e) & (ch.bar == B)].atm_strike.item()
+        o = opt[e]
+        oi = o[(o.day == d) & (o.strike == k) & (o.right == "CE") & (o.bar == B)].oi.item()
+        assert j["strikes"][i] == k and j["ce"]["oi"]["hist"][i] == oi
+
+
+def test_chain_days_follow_the_lookback_and_edges(client):
+    j = get(client, "/api/chain/MKT/days", date="2025-07-30", lookback=10, offset=1, **W)
+    assert j["baseline"]["n"] == 10 and j["lookback"] == 10 and len(j["ce"]["vol"]["hist"]) == 10
+    far = get(client, "/api/chain/MKT/days", date="2025-07-30", offset=25, **W)
+    assert far["available"] and far["strike"] is None and far["ce"] is None and far["pe"] is None
+    assert not get(client, "/api/chain/EQONLY/days", date=D)["available"]
+    assert client.get("/api/chain/MKT/days", params={"offset": 99}).status_code == 422
+
+
 def test_missing_front_month_options_file(client):
     # GAP has no Jul-31 options file: in early July the chain falls back to Aug-28 (rank 1) with a note
     o = get(client, "/api/analysis/GAP", date="2025-07-10", **W)["options"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from ..analysis import build_analysis, build_chain, resolve_day
+from ..analysis import build_analysis, build_chain, build_chain_days, resolve_day
 from ..http import dumps, get_store, json_bytes
 from ..store import Store
 from ..window import parse_window
@@ -35,3 +35,17 @@ def chain(symbol: str, date: str | None = DATE, from_: str | None = FROM, to: st
     w = parse_window(from_, to)
     key = ("chain", sd.symbol, day, w.a, w.b, lookback, expiry, strikes)
     return json_bytes(store.cached(key, lambda: dumps(build_chain(sd, day, w, lookback, expiry, strikes))))
+
+
+@router.get("/chain/{symbol}/days")
+def chain_days(symbol: str, date: str | None = DATE, from_: str | None = FROM, to: str | None = TO,
+               lookback: int = LOOKBACK, expiry: str | None = EXPIRY,
+               offset: int = Query(0, ge=-25, le=25, description="Strike row: 0 = ATM, +1 = next strike above"),
+               store: Store = Depends(get_store)):
+    """One option-chain row on each of the last `lookback` sessions: same window, same distance from ATM.
+    Per side and metric (OI, ΔOI, volume, IV, Greeks): today, average, ×, percentile and each session's value."""
+    sd = store.symbol(symbol)
+    day = resolve_day(sd, date)
+    w = parse_window(from_, to)
+    key = ("chain_days", sd.symbol, day, w.a, w.b, lookback, expiry, offset)
+    return json_bytes(store.cached(key, lambda: dumps(build_chain_days(sd, day, w, lookback, expiry, offset))))

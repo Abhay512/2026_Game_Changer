@@ -11,7 +11,7 @@ from .metrics.chain import chain_block
 from .metrics.flow import flow_block
 from .metrics.futures import oi_block
 from .metrics.price import price_block
-from .metrics.strikes import strike_rows
+from .metrics.strikes import strike_days, strike_rows
 from .metrics.volume import total_block
 from .store import NotFound, SymbolData
 from .window import Window
@@ -202,3 +202,21 @@ def build_chain(sd: SymbolData, day: str, w: Window, lookback: int, expiry: str 
             "front_ok": ctx.front_ok, "notes": ctx.notes, "spot": num(spot, 2), "atm": num(atm, 2),
             "max_pain": num(level_at(cm, "max_pain", [row], w.a, w.b)[0], 2), "lot_size": lot,
             "strikes_each_side": n, "baseline": _baseline_info(ctx.base_days, lookback), **body}
+
+
+def build_chain_days(sd: SymbolData, day: str, w: Window, lookback: int, expiry: str | None, offset: int) -> dict:
+    """One chain row on the last `lookback` sessions (the chain's "last N sessions" bar graphs)."""
+    ctx = option_context(sd, day, expiry, lookback)
+    base = {"symbol": sd.symbol, "date": day, "window": w.as_dict(), "lookback": lookback}
+    if ctx is None:
+        return {**base, **unavailable(f"No options data for {sd.symbol} on this date")}
+    cm = sd.chain
+    row = cm.row(ctx.expiry, day)
+    om = sd.options(ctx.expiry)
+    atm = level_at(cm, "atm_strike", [row], w.a, w.b)[0]
+    spot = level_at(cm, "spot", [row], w.a, w.b)[0]
+    body = strike_days(om, day, atm, spot, offset, w, _strike_baseline(sd, ctx, w))
+    if body is None:
+        return {**base, **unavailable(f"No option chain for {sd.symbol} on this date")}
+    days = body.pop("days")
+    return {**base, "available": True, "expiry": ctx.expiry, "baseline": _baseline_info(days, lookback), **body}

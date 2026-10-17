@@ -1643,6 +1643,53 @@ table.data .row-today td {
   color: var(--ink-2);
 }
 
+/* chain row panel: tabs, then "last N sessions" bar graphs (calls | puts) or the intraday chart */
+.strike-panel {
+  display: grid;
+  gap: 12px;
+  font-family: var(--font-sans);
+}
+
+.strike-panel > .seg {
+  justify-self: start;
+}
+
+.strike-days-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.strike-days-help {
+  font-size: 12px;
+}
+
+.strike-days-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.strike-days.is-loading .strike-days-charts {
+  opacity: 0.6;
+}
+
+.side-days h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+/* the cells whose metric the open panel compares with past sessions */
+.chain-table td.focus {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
 /* per-section time windows */
 .sec-title {
   display: flex;

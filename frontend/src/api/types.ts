@@ -235,6 +235,26 @@ export interface Chain {
   pain: { strikes: number[]; payout: number[]; max_pain: number | null };
 }
 
+/** Chain metrics with a "last N sessions" bar graph. */
+export type SessionKey = "oi" | "oi_chg" | "vol" | "iv" | "vega" | "theta" | "gamma" | "delta";
+
+/** /api/chain/{s}/days: one chain row on each baseline session (same window, same distance from ATM). */
+export interface ChainDays {
+  symbol: string;
+  date: string;
+  window: WindowInfo;
+  lookback: number;
+  available: boolean;
+  reason?: string;
+  expiry: string;
+  baseline: Baseline;
+  strike: number | null;
+  offset: number;
+  strikes: (number | null)[]; // the strike at this offset on each baseline session
+  ce: Record<SessionKey, Compare> | null;
+  pe: Record<SessionKey, Compare> | null;
+}
+
 export interface StrikeSeries {
   symbol: string;
   date: string;

@@ -12,15 +12,17 @@ interface Props {
   avg: number | null;
   abs?: boolean; // the × compares magnitudes: draw ±avg guides
   format: (n: number) => string;
+  detail?: { key: string; days: (string | null)[]; today: string | null }; // extra tooltip row per session
   height?: number;
   label: string;
 }
 
 /** The same window on each baseline session, oldest → newest, then today (accent). */
-export function DaysBars({ days, hist, today, todayDate, avg, abs, format, height = 240, label }: Props) {
+export function DaysBars({ days, hist, today, todayDate, avg, abs, format, detail, height = 240, label }: Props) {
   const [tip, setTip] = useTip();
   const items = [...days.map((d, i) => ({ d, v: hist[i] ?? null, today: false })), { d: todayDate, v: today, today: true }];
   const vals = items.map((i) => i.v).filter(isNum);
+  const nBase = hist.filter(isNum).length; // sessions with a value (e.g. no Greeks on an expiry day)
   const guides = isNum(avg) ? (abs ? [avg, -avg] : [avg]) : [];
   const lo = Math.min(0, ...vals, ...guides);
   const hi = Math.max(0, ...vals, ...guides);
@@ -36,7 +38,9 @@ export function DaysBars({ days, hist, today, todayDate, avg, abs, format, heigh
         const i = Math.min(items.length - 1, Math.max(0, Math.floor((x / f.iw) * items.length)));
         const it = items[i];
         const rows = [{ key: it.today ? "Today" : "Same window", value: isNum(it.v) ? format(it.v) : "—", swatch: it.today ? "var(--accent)" : "var(--base-bar)" }];
-        if (isNum(avg) && isNum(it.v) && avg !== 0) rows.push({ key: abs ? "vs avg size" : "vs 20D avg", value: times((abs ? Math.abs(it.v) : it.v) / avg), swatch: "" });
+        if (isNum(avg) && isNum(it.v) && avg !== 0) rows.push({ key: abs ? "vs avg size" : `vs ${nBase}-session avg`, value: times((abs ? Math.abs(it.v) : it.v) / avg), swatch: "" });
+        const extra = detail && (it.today ? detail.today : detail.days[i]);
+        if (detail && extra) rows.push({ key: detail.key, value: extra, swatch: "" });
         setTip({ x: f.m.l + ((i + 0.5) / items.length) * f.iw, title: day(it.d, true), rows });
       }}
     >
@@ -64,7 +68,7 @@ export function DaysBars({ days, hist, today, todayDate, avg, abs, format, heigh
                 <line x1={f.m.l} x2={f.m.l + f.iw} y1={y(g)} y2={y(g)} className="guide" />
                 {k === 0 && (
                   <text x={f.m.l + 4} y={y(g) - 5} className="guide-label">
-                    {abs ? "average size" : `${days.length}-session average`}
+                    {abs ? "average size" : `${nBase}-session average`}
                   </text>
                 )}
               </g>

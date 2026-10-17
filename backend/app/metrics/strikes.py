@@ -10,7 +10,7 @@ import warnings
 
 import numpy as np
 
-from ..baseline import num
+from ..baseline import compare, num
 from ..formulas import max_pain_matrix
 from ..matrix import DayChain, Matrix, OptionMatrix, level_at, start_values, value_at, window_sum
 from ..window import Window
@@ -21,6 +21,10 @@ GREEKS = ("delta", "gamma", "theta", "vega")
 COMPARED = (("oi_chg", True), ("oi_5m", True), ("vol", False), ("turnover", False), ("iv", False),
             ("iv_chg", True), ("delta", True), ("delta_chg", True), ("gamma", False), ("gamma_chg", True),
             ("theta", True), ("theta_chg", True), ("vega", False), ("vega_chg", True))
+
+# metrics with a "last N sessions" bar graph in the chain (strike_days); same |value| rule as COMPARED
+SESSION_METRICS = (("oi", False), ("oi_chg", True), ("vol", False), ("iv", False), ("vega", False),
+                   ("theta", True), ("gamma", False), ("delta", True))
 
 DECIMALS = {"ltp": 2, "ltp_chg": 2, "oi": 0, "oi_chg": 0, "oi_chg_pct": 2, "oi_5m": 0, "vol": 0, "turnover": 0,
             "iv": 2, "iv_chg": 2, "delta": 4, "delta_chg": 4, "gamma": 6, "gamma_chg": 6, "theta": 3,
@@ -141,3 +145,40 @@ def strike_rows(om: OptionMatrix, day: str, atm: float, spot: float, n: int, w: 
             row[side] = cell
         rows.append(row)
     return {"rows": rows, "pain": pain_curve(om, dc, w), "baseline_n": len(baseline)}
+
+
+def strike_days(om: OptionMatrix, day: str, atm: float, spot: float, offset: int, w: Window,
+                baseline: list[tuple[OptionMatrix, str, float, float]]) -> dict | None:
+    """One chain row (ATM + `offset`) today and on each baseline day, same window and same offset:
+    the per-session values behind the chain's × (one `compare` block per metric and side)."""
+    dc = om.chains.get(day)
+    if dc is None or len(dc.strikes) == 0:
+        return None
+    offs = np.array([offset])
+    strike, ce_rows, pe_rows = offset_rows(dc, atm_index(dc, atm, spot), offs)
+    today = {"ce": contract_metrics(om.m, ce_rows, w), "pe": contract_metrics(om.m, pe_rows, w)}
+
+    days, strikes = [], []
+    samples: dict[str, dict[str, list[float]]] = {"ce": {k: [] for k, _ in SESSION_METRICS},
+                                                  "pe": {k: [] for k, _ in SESSION_METRICS}}
+    for bom, bday, batm, bspot in baseline:
+        bdc = bom.chains.get(bday)
+        if bdc is None or len(bdc.strikes) == 0:
+            continue
+        bstrike, bce, bpe = offset_rows(bdc, atm_index(bdc, batm, bspot), offs)
+        days.append(bday)
+        strikes.append(num(bstrike[0], 2))
+        for side, rows in (("ce", bce), ("pe", bpe)):
+            met = contract_metrics(bom.m, rows, w)
+            for key, _ in SESSION_METRICS:
+                samples[side][key].append(met[key][0])
+
+    out: dict = {"strike": num(strike[0], 2), "offset": int(offset), "days": days, "strikes": strikes}
+    for side in ("ce", "pe"):
+        met = today[side]
+        if not np.isfinite(met["ltp"][0]) and not np.isfinite(met["oi"][0]):
+            out[side] = None  # strike not listed on this side
+            continue
+        out[side] = {key: compare(met[key][0], samples[side][key], DECIMALS[key], absolute=absolute)
+                     for key, absolute in SESSION_METRICS}
+    return out
